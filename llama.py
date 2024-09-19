@@ -21,7 +21,7 @@ def get_llama(model):
     torch.nn.init.uniform_ = skip
     torch.nn.init.normal_ = skip
     from transformers import LlamaForCausalLM
-    model = LlamaForCausalLM.from_pretrained(model, torch_dtype='auto', cache_dir='/scratch/p490-24-t/llamas')
+    model = LlamaForCausalLM.from_pretrained(model, torch_dtype='auto')#, cache_dir='/scratch/p490-24-t/llamas')
     model.seqlen = model.config.max_position_embeddings
     return model
 
@@ -71,19 +71,22 @@ def llama_sequential(model, dataloader, dev):
     outs = torch.zeros_like(inps)
     attention_mask = cache["attention_mask"]
 
+    
     if args.fix_mask:
-        dim = model.model.layers[0].self_attn.q_proj.weight.shape[0]
-        A = torch.eye(dim,  device="cuda")
-        Arand = torch.rand_like(A)
-        Arand += A * 100
-        thres = Arand.abs().flatten().sort()[0][int(A.numel() * (1-0.1))]
-        Amask = (Arand.abs() > thres)
-
-        A = torch.eye(dim,  device="cuda")
-        Arand = torch.rand_like(A)
-        Arand += A * 100
-        thres = Arand.abs().flatten().sort()[0][int(A.numel() * (1-0.2))]
-        AmaskB = (Arand.abs() > thres)
+        masks = {}
+        for n, p in model.named_parameters():
+            if "layers" in n and "weight" in n and len(p.shape) == 2:
+                shape_key = min(p.shape), max(p.shape)
+                if shape_key in masks:
+                    continue
+                dim = shape_key[0]
+                nnz = 0.1 if shape_key[0] == shape_key[1] else 0.2
+                print(n, p.shape, shape_key, nnz)
+                A = torch.eye(dim,  device="cuda")
+                Arand = torch.rand_like(A)
+                Arand += A * 100
+                thres = Arand.abs().flatten().sort()[0][int(A.numel() * (1-nnz))]
+                masks[shape_key] = (Arand.abs() > thres)
 
     print("Ready.")
 
@@ -114,10 +117,8 @@ def llama_sequential(model, dataloader, dev):
                 
                 fixmask = None
                 if args.fix_mask:
-                    if subset[name].weight.shape[0] == subset[name].weight.shape[1]:
-                        fixmask = Amask
-                    else:
-                        fixmask = AmaskB
+                    shape_key = min(subset[name].weight.shape), max(subset[name].weight.shape)
+                    fixmask = masks[shape_key]
                 gpts[name] = DoubleSparse(subset[name], nofinal=args.no_final, fixmask=fixmask)
 
             def add_batch(name):
