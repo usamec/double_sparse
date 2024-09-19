@@ -134,6 +134,7 @@ def llama_sequential(model, dataloader, dev):
                 outs[j] = layer(inps[j].unsqueeze(0), attention_mask=attention_mask)[0]
             for h in handles:
                 h.remove()
+            del outs
 
             for name in subset:
                 print(i, name)
@@ -144,6 +145,7 @@ def llama_sequential(model, dataloader, dev):
                 )
                 gpts[name].free()
 
+        outs = torch.zeros_like(inps)
         for j in range(args.nsamples):
             outs[j] = layer(inps[j].unsqueeze(0), attention_mask=attention_mask)[0]
 
