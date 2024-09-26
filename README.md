@@ -1,3 +1,5 @@
+The repository is based on [SparseGPT](https://github.com/IST-DASLab/sparsegpt) code 
+
 ## Dependencies
 
 * `torch`: tested on v2.2.1
