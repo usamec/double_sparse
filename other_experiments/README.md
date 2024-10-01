@@ -1,6 +1,6 @@
 Here we provide Jupyter notebook for running Double sparse factorization over Resnet-50 on Imagenet.
 
-We require utilities from [OBC](https://github.com/IST-DASLab/OBC) repository. 
+We require utilities from [OBC](https://github.com/IST-DASLab/OBC) repository, but we provide small patch for datautils.py. 
 
 To run OBC pipeline do:
 ```
