@@ -8,6 +8,7 @@ from modelutils import *
 
 try:
     import wandb
+
     has_wandb = True
 except:
     has_wandb = False
@@ -15,20 +16,27 @@ except:
 
 def get_llama(model):
     import torch
+
     def skip(*args, **kwargs):
         pass
+
     torch.nn.init.kaiming_uniform_ = skip
     torch.nn.init.uniform_ = skip
     torch.nn.init.normal_ = skip
     from transformers import LlamaForCausalLM
-    model = LlamaForCausalLM.from_pretrained(model, torch_dtype='auto')#, cache_dir='/scratch/p490-24-t/llamas')
+
+    model = LlamaForCausalLM.from_pretrained(
+        model,
+        torch_dtype="auto",
+        cache_dir="/scratch/p487-24-1/llamas",
+    )
     model.seqlen = model.config.max_position_embeddings
     return model
 
 
 @torch.no_grad()
 def llama_sequential(model, dataloader, dev):
-    print("Starting...")
+    print(f"Starting... on device {dev}")
 
     use_cache = model.config.use_cache
     model.config.use_cache = False
@@ -71,7 +79,6 @@ def llama_sequential(model, dataloader, dev):
     outs = torch.zeros_like(inps)
     attention_mask = cache["attention_mask"]
 
-    
     if args.fix_mask:
         masks = {}
         for n, p in model.named_parameters():
@@ -82,11 +89,11 @@ def llama_sequential(model, dataloader, dev):
                 dim = shape_key[0]
                 nnz = 0.1 if shape_key[0] == shape_key[1] else 0.2
                 print(n, p.shape, shape_key, nnz)
-                A = torch.eye(dim,  device="cuda")
+                A = torch.eye(dim, device="cuda")
                 Arand = torch.rand_like(A)
                 Arand += A * 100
-                thres = Arand.abs().flatten().sort()[0][int(A.numel() * (1-nnz))]
-                masks[shape_key] = (Arand.abs() > thres)
+                thres = Arand.abs().flatten().sort()[0][int(A.numel() * (1 - nnz))]
+                masks[shape_key] = Arand.abs() > thres
 
     print("Ready.")
 
@@ -114,12 +121,16 @@ def llama_sequential(model, dataloader, dev):
                     not (args.minlayer <= i < args.maxlayer and args.prune_only in name)
                 ) == (not args.invert):
                     continue
-                
+
                 fixmask = None
                 if args.fix_mask:
-                    shape_key = min(subset[name].weight.shape), max(subset[name].weight.shape)
+                    shape_key = min(subset[name].weight.shape), max(
+                        subset[name].weight.shape
+                    )
                     fixmask = masks[shape_key]
-                gpts[name] = DoubleSparse(subset[name], nofinal=args.no_final, fixmask=fixmask)
+                gpts[name] = DoubleSparse(
+                    subset[name], nofinal=args.no_final, fixmask=fixmask
+                )
 
             def add_batch(name):
                 def tmp(_, inp, out):
@@ -162,7 +173,7 @@ def llama_sequential(model, dataloader, dev):
 
 
 @torch.no_grad()
-def llama_eval(model, testenc, dev,  dataset: str, log_wandb: bool = False):
+def llama_eval(model, testenc, dev, dataset: str, log_wandb: bool = False):
     print("Evaluating ...")
 
     testenc = testenc.input_ids
@@ -320,9 +331,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--no-final", action="store_true", help="Do not run the finalizer."
     )
-    parser.add_argument(
-        "--fix-mask", action="store_true", help="Keep one mask fixed."
-    )
+    parser.add_argument("--fix-mask", action="store_true", help="Keep one mask fixed.")
     args = parser.parse_args()
 
     # init W&B logging
@@ -330,11 +339,18 @@ if __name__ == "__main__":
         assert has_wandb, "wandb not installed try `pip install wandb`"
         wandb.init(config=args)
 
+    print(f"Running on dev: {DEV}")
+    print("loading llama")
     model = get_llama(args.model)
+    print("llama loaded")
     model.eval()
 
     dataloader, testloader = get_loaders(
-        args.dataset, nsamples=args.nsamples, seed=args.seed, model=args.model, seqlen=model.seqlen
+        args.dataset,
+        nsamples=args.nsamples,
+        seed=args.seed,
+        model=args.model,
+        seqlen=model.seqlen,
     )
 
     if (args.sparsity or args.prunen) and not args.gmp:
@@ -342,7 +358,7 @@ if __name__ == "__main__":
         llama_sequential(model, dataloader, DEV)
         for n, p in model.named_parameters():
             print(n, torch.mean((p == 0).float()))
-            if 'down_proj' in n:
+            if "down_proj" in n:
                 break
         print(time.time() - tick)
 

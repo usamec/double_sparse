@@ -1,0 +1,1 @@
+srun -J "cp0.5mask" -c 5 -p gpu -G 1  --account=p487-24-1 --time=2800 --mem=150GB sp0.5mask.sh
